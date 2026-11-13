@@ -1,0 +1,10 @@
+// Design tokens consumed alongside Tailwind. Kept in SASS for theme audits.
+$parchment: #f4efe6;
+$ink: #1a1814;
+$rust: #e85d04;
+$teal: #0f4c5c;
+
+.visually-quiet {
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}

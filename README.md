@@ -1,36 +1,104 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# EventHub frontend
 
-## Getting Started
+Next.js 16 customer and organizer UI for EventHub. Talks to the Express API (`backend-node`), Strapi CMS (`event-cms`), and falls back to demo data when those services are down.
 
-First, run the development server:
+## Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Next.js 16 App Router, React 19, TypeScript
+- Axios (CSR via `/api/v1` BFF) + `fetch` (SSR / ISR / SSG)
+- Zustand, Tailwind CSS 4, SASS tokens (`src/styles/tokens.scss`)
+- `react.memo` event cards/grid, debounced search (400ms)
+- Vitest, Recharts (lazy-loaded)
+
+## Rendering
+
+| Mode | Routes | How |
+|------|--------|-----|
+| **SSG** | `/about`, `/terms` | Static metadata, no request data |
+| **ISR** | `/`, FAQ/banners | `'use cache'` + `cacheLife('hours')` + Strapi `fetch` revalidate |
+| **SSR** | `/events`, `/events/[id]` | Server `fetch` to Express with session cookie, `generateMetadata` |
+| **CSR** | checkout, payment, bookings, admin, auth | Axios → Next BFF → Express |
+
+Search on `/events` debounces, then updates the URL so the SSR page refetches with `q`, `city`, `sort`, `page`.
+
+## Folder structure
+
+```
+src/
+  app/                 routes, sitemap, robots, BFF `/api/v1/[...path]`
+  components/events    memoized cards, filters, pagination
+  components/screens   CSR checkout / admin / auth
+  hooks/               useDebouncedValue
+  lib/http             axios-client, server-fetch, BFF path map
+  lib/server           SSR events, ISR CMS
+  lib/api              domain calls + mock fallback
+  stores/              Zustand
+  styles/              SASS tokens
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Screens
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**Customer:** login, register, OTP verify, OAuth callback, event list/detail, ticket selection, checkout, payment, confirmation, my bookings, notifications, profile, FAQ.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Admin:** dashboard, event management, bookings, customers, payment reports, notification monitoring, analytics.
 
-## Learn More
+Responsive breakpoints cover mobile, iPad, iPad Pro, laptop, and desktop (`sm` 640, `md` 768, `lg` 1024, `xl` 1280).
 
-To learn more about Next.js, take a look at the following resources:
+## Setup
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+cd EventHub/frontend
+cp .env.example .env.local
+npm install
+npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Open [http://localhost:3000](http://localhost:3000).
 
-## Deploy on Vercel
+Without the API running, health check fails and the app uses in-memory demo data. Sign in with any email and an 8+ character password. Use an email containing `admin` (for example `ops@admin.test`) for organizer screens.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+With the API:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Start Mongo + MySQL and `backend-node` on port 5000.
+2. Optionally start Strapi on 1337.
+3. Keep `NEXT_PUBLIC_USE_MOCKS=false`.
+
+Google/LinkedIn go through `GET /api/v1/auth/google` (BFF) which proxies Express. Express still redirects to `/oauth-success?token=`.
+
+The BFF maps `/api/v1/events` → Express `/api/events` (same for tickets, bookings, payments). Login sets httpOnly `eh_access` / `eh_refresh` cookies for SSR.
+
+## Rendering
+
+| Mode | Routes |
+|------|--------|
+| SSR | `/events`, home event rail |
+| ISR | `/faq`, homepage banners (Strapi) |
+| SSG | `/about`, `/terms` |
+| CSR + Axios | auth, checkout, payment, bookings, admin |
+
+## Scripts
+
+| Command | Purpose |
+|---------|---------|
+| `npm run dev` | Next.js dev server |
+| `npm run build` | Production build |
+| `npm run start` | Serve production build |
+| `npm test` | Vitest unit tests |
+| `npm run lint` | ESLint |
+
+## Docs in this folder
+
+- [Architecture](./docs/ARCHITECTURE.md)
+- [Production failure scenarios](./docs/FAILURE_SCENARIOS.md)
+- [API map](./docs/API.md)
+- [ER diagram](./docs/ER_DIAGRAM.md)
+- [Postman collection](./postman/EventHub.postman_collection.json)
+
+## Performance notes (frontend)
+
+- Debounced catalogue search; pagination/sort/filter as query params
+- `react.memo` on `EventCard` / `EventGrid`
+- App Router code splitting; `next/dynamic` for Recharts
+- `next/image`, sitemap.xml, robots.txt, Event JSON-LD, Open Graph
+- ISR cache tags `cms-faqs` / `cms-banners`; event SSR is `cache: no-store` so ticket inventory is not served stale
+- Axios interceptors refresh JWT; BFF attaches `x-request-id`
